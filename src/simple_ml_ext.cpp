@@ -5,6 +5,85 @@
 
 namespace py = pybind11;
 
+void mul(const float* left, const float* right, float* target, size_t m, size_t n, size_t k) {
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < k; ++j) {
+            float sum = 0.0;
+            for (size_t index = 0; index < n; ++index) {
+                sum += left[i * n + index] * right[index * k + j];
+            }
+            target[i * k + j] = sum;
+        }
+    }
+}
+void normalize(float* target, size_t m, size_t n) {
+    for (size_t i = 0; i < m; ++i) {
+        float sum = 0.0;
+        for (size_t j = 0; j < n; ++j) {
+            sum += std::exp(target[i * n + j]);
+        }
+        for (size_t j = 0; j < n; ++j) {
+            target[i * n + j] = std::exp(target[i * n + j]) / sum;
+        }
+    }
+}
+void one_hot(const unsigned char* y, float* target, size_t m, size_t k) {
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < k; ++j) {
+            target[i * k + j] = 0.0;
+        }
+        target[i * k + y[i]] = 1.0;
+    }
+}
+void calc_single(float* target, char type, float value, size_t m, size_t n) {
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            switch (type) {
+                case '+':
+                    target[i * n + j] += value;
+                    break;
+                case '-':
+                    target[i * n + j] -= value;
+                    break;
+                case '*':
+                    target[i * n + j] *= value;
+                    break;
+                case '/':
+                    target[i * n + j] /= value;
+                    break;
+            }
+        }
+    }
+}
+void calc_matrix(float* target, char type, float* value, size_t m, size_t n) {
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            switch (type) {
+                case '+':
+                    target[i * n + j] += value[i * n + j];
+                    break;
+                case '-':
+                    target[i * n + j] -= value[i * n + j];;
+                    break;
+                case '*':
+                    target[i * n + j] *= value[i * n + j];;
+                    break;
+                case '/':
+                    target[i * n + j] /= value[i * n + j];;
+                    break;
+            }
+        }
+    }
+}
+// m, n -> n, m
+void transpose(const float* source, float* target, size_t m, size_t n) {
+    for (size_t i = 0; i < m; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+            target[j * m + i] = source[i * n + j];
+        }
+    }
+}
+
 
 void softmax_regression_epoch_cpp(const float *X, const unsigned char *y,
 								  float *theta, size_t m, size_t n, size_t k,
@@ -33,6 +112,35 @@ void softmax_regression_epoch_cpp(const float *X, const unsigned char *y,
      */
 
     /// BEGIN YOUR CODE
+    float* z_batch = new float[batch * k];
+    float* Iy = new float[batch * k];
+    float* x_t = new float[batch * n];
+    float* grad = new float[n * k];
+
+    for (size_t bi = 0; bi < m; bi += batch) {
+        size_t cur_batch = m - bi < batch ? m - bi : batch;
+
+        const float* cur_x = X + bi * n;
+        const unsigned char* cur_y = y + bi;
+
+        // (batch_size, n) * (n, k) = (batch_size, k)
+        mul(cur_x, theta, z_batch, cur_batch, n, k);
+        normalize(z_batch, cur_batch, k);
+
+        one_hot(cur_y, Iy, cur_batch, k);
+
+        calc_matrix(z_batch, '-', Iy, cur_batch, k);
+        transpose(cur_x, x_t, cur_batch, n);
+        mul(x_t, z_batch, grad, n, cur_batch, k);
+        calc_single(grad, '*', (lr / batch), n, k);
+
+        calc_matrix(theta, '-', grad, n, k);
+    }
+
+    delete[] z_batch;
+    delete[] Iy;
+    delete[] x_t;
+    delete[] grad;
 
     /// END YOUR CODE
 }
